@@ -1,0 +1,272 @@
+# UZ80 -- http://cngsoft.no-ip.org/uz80.htm #
+
+	UU  UU ZZZZZZ  8888   0000  // ---------------------------------
+	UU  UU     ZZ 88  88 00  00 // UZ80, a small Z80 macro assembler
+	UU  UU    ZZ  88  88 00  00 // written by Cesar Nicolas-Gonzalez
+	UU  UU   ZZ    8888  00  00 // since 2018-02-23 17:05 till today
+	UU  UU  ZZ    88  88 00  00 // ---------------------------------
+	UU  UU ZZ     88  88 00  00 // http://cngsoft.no-ip.org/uz80.htm
+	 UUUU  ZZZZZZ  8888   0000  // ---------------------------------
+
+## Foreword ##
+
+UZ80 is a cross-platform Z80 assembler that aims to be small and fast while
+still providing valuable services such as macro instructions and conditional
+assembly. Internally, it departs from full two-pass methods and relies instead
+on assembling as much code as possible during the first pass and writing down
+the lines making references to still unseen symbols; these lines will be
+assembled when all symbols are known.
+
+Software and documentation are provided "as is" with no warranty. The source
+code of UZ80 and its binaries follow the GNU General Public License v3, as seen
+in the file GPL.TXT within the package.
+
+## How to use ##
+
+UZ80 relies on the standard C library, it doesn't need other libraries to run.
+Its command line syntax is as follows:
+
+	UZ80 [-qvz] [-D[label[=value]]] [-Ipath] source [-o]target
+
+* -q : quiet mode, no messages other than fatal errors are shown;
+* -v : verbose mode, shows all messages, symbols and macros;
+* -z : fill gaps with the value 0x00 rather than 0xFF;
+* -Dlabel=value : defines a symbol named `label` whose value is `value`;
+* -Dlabel : shortcut for `-Dlabel=1`;
+* -D : shortcut for `-DDEBUG=1`;
+* -Ipath : defines the INCLUDE path;
+* source : the source file; must be followed by a target file;
+* target : the target file; must follow a source file.
+
+The assembly syntax itself is as follows:
+
+	[LABEL[:]] [INSTRUCTION [PARAMETER[,PARAMETER ...]]]
+
+Indenting is important: labels must begin on the first character of each line
+and instructions start later in the line even when there are no labels.
+Instructions are either those belonging to the Z80, or the following pseudo
+instructions:
+
+* org EXPRESSION : sets the assembly origin point at EXPRESSION;
+* align EXPRESSION : aligns the current assembly point to the next address that
+is a multiplo of EXPRESSION;
+* defb EXPRESSION... : defines a data block as a series of bytes separated with
+commas; strings within quotes can be used, too;
+* defw EXPRESSION... : like `defb`, but with 16-bit words and no strings;
+* defd EXPRESSION... : like `defw`, but with 32-bit double words;
+* defc EXPRESSION... : like `defb`, but strings within quotes get its last
+character's top bit toggled;
+* defs EXPRESSION[,EXPRESSION] : fills with zeroes (or with the byte set by the
+second EXPRESSION) the amount of bytes set by the first EXPRESSION;
+* LABEL equ EXPRESSION / LABEL = EXPRESSION : creates a symbol named LABEL whose
+value will be EXPRESSION;
+* if EXPRESSION : assembles the following lines if EXPRESSION is true or nonzero
+(conditional assembly) until meeting either an `else` or an `endif`;
+* elif EXPRESSION : assembles the following lines if EXPRESSION is true or
+nonzero and no preceeding `if` or `elif` were true; `elif` must follow an `if`
+or another `elif`;
+* else : assembles the following lines if the current conditional assembly is
+false or zero; `else` must follow an `if` or an `elif`;
+* endif : ends the current conditional assembly; `endif` must follow an `if`, an
+`else` or an `elif`;
+* incbin "FILENAME"[,EXPRESSION1[,EXPRESSION2]] : includes the contents of a
+binary file named FILENAME (since either the beginning of the file or offset
+EXPRESSION1, reading either the full file or just EXPRESSION2 bytes) within the
+current assembly;
+* include "FILENAME" : includes the contents of another source file (either in
+the same path as the source or in the INCLUDE path) named FILENAME within the
+current assembly;
+* LABEL macro [PARAM1[,PARAM2 ...] : defines a macro instruction named LABEL
+optionally featuring up to nine parameters.
+* endm : ends the definition of the current macro;
+* end : stops assembling the current source file.
+
+Expressions are similar to those used in C and in other assemblers: integers
+(either decimal formatted as 1234 or 1234d, hexadecimal as #1234, $1234, 1234h
+or 0x1234, octal as 1234o or binary as %10110111 or 10110111b) and symbols
+(case-insensitive; `$` stands for the current address) can endure addition
+(`+`), substraction (`-`), multiplication (`*`), division (`/`), modulo (`%`),
+logical NOT (`!`), bitwise NOT (`~`), bitwise AND (`&`), bitwise OR (`|`),
+bitwise XOR (`^`), left shift (`<<`), right shift (`>>`) and several types of
+comparison (`<`, `<=`, `=`/`==`, `<>`/`!=`, `>=`, `>`); by default, operation
+precedence follows common rules such as additions and substractions taking place
+after multiplications and divisions, but before comparisons, unless parentheses
+are used to prioritise some operations over others.
+
+Notice that the pseudo instructions `equ` and `macro` must include their own
+labels and thus need to begin on the first character of the line.
+
+An example of a macro with parameters is as follows:
+
+	memcpy macro target,source,length
+		ld hl,source
+		ld de,target
+		ld bc,length
+		ldir
+		endm
+
+Using it with `memcpy buffer,string,10` generates the following code:
+
+		ld hl,string
+		ld de,buffer
+		ld bc,10
+		ldir
+
+The special symbols `\1`, `\2`, `\3`... stand for the first, second, third...
+parameters in the macro; the special symbol `\0` stands for the number of
+parameters. Local labels within a macro can be defined by appending the special
+symbol `\?` to the label name (`labelname\?`).
+
+Originally undocumented instructions such as SLL r, IN (C) and OUT (C) and
+parameters such as the high and low halves of IX and IY (XH, XL, YH and YL
+respectively) are supported, as well as several synonyms and shortcuts:
+
+* DEFM/DB : DEFB
+* DW : DEFW
+* DD : DEFD
+* DC : DEFC
+* DS : DEFS
+* IXH/HX/HIX : XH
+* IXL/LX/LIX : XL
+* IYH/HY/HIY : YH
+* IYL/LY/LIY : YL
+* EXA : EX AF,AF'
+* SL1 : SLL
+* SHL : SLA
+* SHR : SRL
+* JP/CALL V/NV/S/NS,ADDR : JP/CALL PO/PE/M/P,ADDR
+* PUSH REG1,REG2,REG3... : PUSH REG1 /// PUSH REG2 /// PUSH REG3 ...
+* POP REG1,REG2,REG3... : ... POP REG3 /// POP REG2 /// POP REG1
+* NOP EXPRESSION : NOP repeated EXPRESSION times
+* LD BC/DE/HL/IX/IY/(IX+NN)/(IY+NN),BC/DE/HL/IX/IY/(IX+NN)/(IY+NN) : LD
+B/D/H/XH/YH/(IX+NN)/(IY+NN),B/D/H/XH/YH/(IX+NN)/(IY+NN) /// LD
+C/E/L/XL/YL/(IX+NN+1)/(IY+NN+1),C/E/L/XL/YL/(IX+NN+1)/(IY+NN+1)
+* RL/SLA/SLL BC/DE/HL : RL/SLA/SLL C/E/L /// RL B/D/H
+* RR/SRA/SRL BC/DE/HL : RR/SRA/SRL B/D/H /// RR C/E/L
+* SUB HL,BC/DE/HL : CP A /// SBC HL,BC/DE/HL
+
+Macros and the pseudo instructions `if` and `include` can be recursively nested;
+however, too many levels of nesting will cause a fatal error. Exit codes are
+either 0 (success) or 1 (fatal error); fatal errors will display a short message
+stating the type and location of each error.
+
+## Version log ##
+
+- 20180321-2040 -- first public release. Succesfully assembles FROGALOT,
+HIREHARE, BASKETCS and the CHIPNSFX player demo.
+- 20180322-1930 -- second public release. Added instructions OUTD and OUTI
+(synonyms of OTD and OTI) and fixed inconsistencies when using a macro with
+fewer parameters than defined: BB4CPC and DUCKOUT assemble.
+- 20180326-1155 -- third public release. Added synonyms SUB/AND/XOR/OR/CP
+A,PARAM for SUB/AND/XOR/OR/CP PARAM. Improper escape sequences raise fatal
+errors. The Win32 binary is no longer packed with UPX.
+- 20180408-1440 -- fourth public release. Buffers are now dynamically allocated
+and reallocated, "out of memory" should happen only when no more memory can be
+allocated. Several fixes in error handling: word overflow no longer names itself
+as "byte out of range"; error messages during final calculations are shown only
+once; opcodes relying on small constants (BIT, IM and RST) perform consistent
+range checks.
+- 20180414-1140 -- minor patch. Removed synonyms OTD and OTI. Code cleanup:
+source is 48k, binary is 32k.
+- 20180417-1920 -- fifth public release. Ditched the last remainder of AS80
+compatibility: the symbol `$` means the current target address rather than the
+current line's target; `defb nextline-$,nextline-$,nextline-$` followed by
+`nextline:` is now equivalent to `db 3,2,1` rather than `db 3,3,3`. The tracker
+CHIPNSFX has been modified accordingly. Fixed error messages of missing symbols
+in label definition expressions.
+- 20180426-1030 -- sixth public release. Added synonyms LD BC/DE/HL, BC/DE/HL
+for LD C/E/L,C/E/L+LD B/D/H,B/D/H. Fixed illegal commands LD XL,L/H/(IX) and
+similar being accepted. INCLUDE swaps `/` and `\` if required.
+- 20180505-1200 -- seventh public release. Added synonyms LD BC/DE/IX/IY,
+BC/DE/IX/IY for LD C/E/XL/YL,C/E/XL/YL+LD B/D/XH/YH,B/D/XH/YH. Added the "no
+warranty" line to the foreword.
+- 20180506-1230 -- minor patch fixing a bug in hexadecimal suffixes (1234h) and
+adding octal and decimal suffixes (1234o and 1234d).
+- 20180510-1255 -- minor patch fixing a bug in source paths with folders.
+- 20180528-2020 -- minor patch fixing illegal command ADD IX/IY,HL being
+accepted instead of ADD IX,IX/ADD IY,IY.
+- 20180808-0946 -- eighth public release. Added `[` and `]` as indirect
+addressing symbols: LD A,[HL] is equivalent to LD A,(HL). Bugfixes: added dummy
+instructions LIST and NOLIST to ease compatibility; command line parameter `-vv`
+returns the right exit code rather than always 1, and `-oX` without source
+doesn't crash any longer; source line `label:opcode` (no spaces) defines the
+label and assembles the opcode rather than handling it as a very long label
+without any opcodes.
+- 20180822-1850 -- minor patch fixing several inconsistencies such as using more
+than one `-D` parameter, displaying the output size of a binary, `-vv` becoming
+obsolete because `-v` shows everything or symbols with invalid parameters not
+triggering an error. Parameters can be chained together: `-vzoBLAH` stands for
+`-v -z -oBLAH`. Source file can be `-` (standard input) and can be pipelined.
+Added optional second field to DEFS to define the padding value, zero by
+default. Extended and documented special macro symbols `\0`, `\1`-`\9` and `\?`.
+- 20180910-1020 -- minor patch fixing a bug in DEFB (`"a"+1` was rejected
+despite the equivalent `1+"a"` being valid and accepted) and making command line
+options case-insensitive.
+- 20181025-1445 -- minor patch accepting the lines `label=expression`, `label=
+expression` and `label =expression` as valid synonyms of `label = expression`
+rather than handling them as a very long label or rejecting them as improper
+labels or opcodes.
+- 20181104-1105 -- minor patch fixing a bug that raised errors in lines that had
+more than one parameter whereby the first one included a symbol not yet defined,
+but the second one didn't, and 256 symbols had already been defined.
+- 20181130-2030 -- minor patch fixing a bug where HY was a synonym of XH rather
+than YH, adding further synonyms HIX, HIY, LIX and LIY for XH, YH, XL and YL
+respectively, and restoring optional AS80 compatibility with command line
+parameter `-$` to emulate the bugs `IX-1-1 = IX-0` (rather than `IX-2`) and `lbl
+db $-lbl,$-lbl,$-lbl = lbl db 0,0,0` (rather than `lbl db 0,1,2`).
+- 20190210-1150 -- minor source cleanup setting apart PSEUDO and OPCODE; RST
+accepts 0-7 as well as 0-56, in the same fashion JP (HL/IX/IY) could also be
+written JP HL/IX/IY; changed IN 0,(C) and OUT (C),0 into IN (C) and OUT (C)
+because whether the byte sent by OUT is 0 or 255 depends on the Z80 CMOS/NMOS
+type.
+- 20190731-2140 -- UZ80 is now GPL. Upgraded GCC to 5.1.0.
+- 20190928-1055 -- ninth public release. Added command line parameter `-Ipath`
+to define an optional INCLUDE path; fixed bugs in the handling of expressions
+within brackets and commas within quotes, and in INCLUDE with very long command
+line paths; made a couple of errors slightly more explicit. Code cleanup: source
+is 50k, binary is 32k.
+- 20191003-2020 -- minor patch adding the pseudo instruction `INCBIN`, identical
+in syntax to `INCLUDE`, but taking the specified file as binary data rather than
+as source code.
+- 20191010-1925 -- minor patch adding two optional parameters to `INCBIN` to
+define the file offset and length.
+- 20200103-1105 -- tenth public release. Added AS80-compatible shortcuts `LD
+BC/DE/HL/IX/IY,BC/DE/HL/IX/IY` (i.e. `LD HL,BC` generates `LD H,B /// LD L,C`)
+and extended the behavior of `INCBIN` to handle negative parameters as relative
+to the end of the file (i.e. `INCBIN "FILE",-10,8` seeks the ten last bytes of
+the file, reads eight and ignores the last two) rather than to its beginning.
+- 20200331-1155 -- minor patch simplifying operand priority calculation and
+macro local labels and making some errors more explicit again, such as `ORG`
+telling apart between "undefined symbol" and "invalid expression".
+- 20201109-2005 -- minor patch adding `EXA` as a synonym of `EX AF,AF'` and
+allowing the target file `-` as the standard output.
+- 20201118-0930 -- minor patch fixing illegal commands `LD XL,(HL)` and similar
+being accepted.
+- 20201124-1455 -- minor patch adding `BRK` as a shortcut of `db $ED,$FF`
+following an idea from Norecess and Roudoudou.
+- 20210114-1255 -- minor patch allowing redefining labels from the command line,
+f.e. `-DVAR=0 -DVAR=1` first defines VAR as 0, then redefines it as 1.
+- 20210421-2555 -- minor patch adding `SL1` as a RASM-compatible synonym of
+`SLL`.
+- 20211030-1345 -- minor patch adding SJASM-compatible shortcuts `LD
+BC/DE/HL,(IX/IY+NN)` (i.e. `LD BC,(IX+5)` becomes `LD C,(IX+5) /// LD
+B,(IX+6)`), `LD (IX/IY+NN),BC/DE/HL` (i.e. `LD (IX+5),BC` becomes `LD (IX+5),C
+/// LD (IX+6),B`), `RL/RR/SLA/SRA/SLL/SRL BC/DE/HL` (i.e. `SLA BC` generates
+`SLA C /// RL B` and `SRA BC` generates `SRA B /// RR C`) and "SUB HL,BC/DE/HL"
+(i.e. `SUB HL,BC` generates `CP A /// SBC HL,BC`).
+- 20220806-2555 -- minor patch adding the new error "ENDM without MACRO" and
+forbidding negative shift counts, i.e. `LD A,1>>-1` raises a syntax error.
+- 20221020-2555 -- minor patch adding `ELIF EXPRESSION` as a shortcut of `ELSE
+/// IF EXPRESSION /// ... /// ENDIF`, plus the matching error `ELIF without IF`.
+- 20230120-0955 -- minor patch fixing a bug in `RR/SRA/SRL BC/DE/HL`: the second
+half operated with B, D or H instead of C, E or L.
+- 20230303-1955 -- minor patch adding the R800-exclusive opcodes `MULUB
+[A,]A/B/C/D/E/H/L` and `MULUW HL,BC/DE/HL/SP`.
+- 20230626-2555 -- minor patch adding `DEFC "STRING"[,"STRING" ...]` that
+toggles the highest bit in the last character of each string, i.e. `DEFC
+"DISC","TAPE"` is equivalent to `DEFB "DIS","C"+128,"TAP","E"+128`.
+- 20231103-2555 -- minor patch making the AS80-compatible mode (command line
+parameter `-$`) reject non-AS80 pseudo instructions ELIF and INCBIN and
+R800-exclusive opcodes MULUB and MULUW.
+- 20240224 -- minor patch removing several warnings and reducing the version
+string to the date alone; the time had been meaningless for a very long while.
